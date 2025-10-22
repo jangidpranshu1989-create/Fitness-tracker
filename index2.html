@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HabitPro – Premium Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* ========== GLOBAL STYLES ========== */
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Roboto', sans-serif; }
+body { background: #0d1117; color: #eee; display:flex; justify-content:center; align-items:flex-start; padding:40px 0; }
+.container { width:95%; max-width:1100px; padding:25px; border-radius:15px; background: linear-gradient(145deg,#111827,#1e293b); box-shadow:0 10px 30px rgba(0,0,0,0.7); }
+
+/* ========== HEADER ========== */
+header { display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; }
+header h1 { color:#4fd1c5; font-size:2rem; }
+header img { width:55px; height:55px; border-radius:50%; }
+
+/* ========== HABIT FORM ========== */
+#habitForm { display:flex; gap:15px; margin-bottom:25px; flex-wrap:wrap; }
+#habitForm input, #habitForm select { padding:12px; border-radius:10px; border:none; background:#1f2937; color:#fff; font-size:1rem; }
+#habitForm button { padding:12px 25px; border:none; border-radius:10px; background:#4fd1c5; color:#0d1117; font-weight:bold; cursor:pointer; transition:.3s; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+#habitForm button:hover { background:#38b2ac; transform:translateY(-2px); }
+
+/* ========== HABIT LIST ========== */
+#habitList { margin-bottom:25px; }
+.habit-item { display:flex; justify-content:space-between; align-items:center; background:#1f2937; padding:12px 18px; border-radius:12px; margin-bottom:12px; box-shadow:0 4px 12px rgba(0,0,0,0.3); transition:.3s; }
+.habit-item:hover { transform: translateY(-2px); }
+.habit-item span { font-size:1.05rem; font-weight:500; }
+.habit-item button { margin-left:10px; border:none; padding:6px 14px; border-radius:8px; cursor:pointer; transition:.3s; font-weight:bold; }
+.habit-item button.manage { background:#22c55e; color:#0d1117; }
+.habit-item button.delete { background:#ef4444; color:#fff; }
+.habit-item button:hover { opacity:0.85; }
+
+/* ========== PROGRESS BAR ========== */
+.progress-bar { height:8px; background:#0d1117; border-radius:4px; margin-top:6px; }
+.progress-fill { height:100%; background:#4fd1c5; border-radius:4px; transition:width .3s ease; }
+
+/* ========== STATS ========== */
+#stats { display:flex; justify-content:space-around; margin-bottom:25px; }
+.stat-box { background:#1f2937; padding:18px 20px; border-radius:12px; text-align:center; flex:1; margin:0 7px; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+.stat-box h3 { color:#4fd1c5; margin-bottom:10px; font-size:1.1rem; }
+
+/* ========== CHART ========= */
+#chartContainer { margin-bottom:25px; background:#1f2937; padding:20px; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+canvas { max-width:100%; }
+
+/* ========== PDF BUTTON ========== */
+#exportPDF { padding:12px 25px; border-radius:10px; border:none; background:#4fd1c5; color:#0d1117; font-weight:bold; cursor:pointer; transition:.3s; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+#exportPDF:hover { background:#38b2ac; transform:translateY(-2px); }
+
+/* ========== RESPONSIVE ========== */
+@media(max-width:768px){ #habitForm { flex-direction:column; } .stat-box { margin:5px 0; } }
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>HabitPro</h1>
+        <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Logo">
+    </header>
+
+    <!-- HABIT FORM -->
+    <form id="habitForm">
+        <input type="text" id="habitName" placeholder="Habit Name" required>
+        <select id="habitType">
+            <option value="Daily">Daily</option>
+            <option value="Weekly">Weekly</option>
+            <option value="Monthly">Monthly</option>
+        </select>
+        <button type="submit">Add Habit</button>
+    </form>
+
+    <!-- HABIT LIST -->
+    <div id="habitList"></div>
+
+    <!-- STATS -->
+    <div id="stats">
+        <div class="stat-box"><h3>Total Habits</h3><span id="totalHabits">0</span></div>
+        <div class="stat-box"><h3>Completed</h3><span id="completedHabits">0</span></div>
+        <div class="stat-box"><h3>Streak</h3><span id="streak">0</span></div>
+    </div>
+
+    <!-- CHART -->
+    <div id="chartContainer">
+        <canvas id="progressChart"></canvas>
+    </div>
+
+    <!-- EXPORT PDF -->
+    <button id="exportPDF">Export PDF</button>
+</div>
+
+<script>
+// ========== DATA STORAGE ==========
+let habits = [];
+let habitCompletion = {};
+
+// ========== DOM ELEMENTS ==========
+const habitForm = document.getElementById('habitForm');
+const habitNameInput = document.getElementById('habitName');
+const habitTypeSelect = document.getElementById('habitType');
+const habitList = document.getElementById('habitList');
+const totalHabits = document.getElementById('totalHabits');
+const completedHabits = document.getElementById('completedHabits');
+const streakEl = document.getElementById('streak');
+const exportPDFBtn = document.getElementById('exportPDF');
+const ctx = document.getElementById('progressChart').getContext('2d');
+
+// ========== ADD HABIT ==========
+habitForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const name = habitNameInput.value.trim();
+    const type = habitTypeSelect.value;
+    if(name && !habits.includes(name)){
+        habits.push(name);
+        habitCompletion[name] = 0;
+        renderHabits();
+        habitNameInput.value = '';
+        updateStats();
+        updateChart();
+    } else { alert("Habit name required or already exists!"); }
+});
+
+// ========== RENDER HABITS ==========
+function renderHabits(){
+    habitList.innerHTML = '';
+    habits.forEach(habit => {
+        const div = document.createElement('div');
+        div.classList.add('habit-item');
+        div.innerHTML = `
+            <div>
+                <span>${habit} (${habitCompletion[habit]}%)</span>
+                <div class="progress-bar"><div class="progress-fill" style="width:${habitCompletion[habit]}%"></div></div>
+            </div>
+            <div>
+                <button class="manage" onclick="incrementHabit('${habit}')">✔</button>
+                <button class="delete" onclick="deleteHabit('${habit}')">🗑</button>
+            </div>
+        `;
+        habitList.appendChild(div);
+    });
+}
+
+// ========== MANAGE HABIT ==========
+function incrementHabit(habit){
+    if(habitCompletion[habit]<100) habitCompletion[habit]+=10;
+    if(habitCompletion[habit]>100) habitCompletion[habit]=100;
+    renderHabits(); updateStats(); updateChart();
+}
+
+// ========== DELETE HABIT ==========
+function deleteHabit(habit){
+    habits = habits.filter(h => h!==habit);
+    delete habitCompletion[habit];
+    renderHabits(); updateStats(); updateChart();
+}
+
+// ========== UPDATE STATS ==========
+function updateStats(){
+    totalHabits.textContent = habits.length;
+    completedHabits.textContent = Object.values(habitCompletion).filter(v=>v===100).length;
+    streakEl.textContent = Math.max(...Object.values(habitCompletion),0);
+}
+
+// ========== CHART ==========
+let chart;
+function updateChart(){
+    const data = {
+        labels: habits,
+        datasets: [{
+            label:'Progress (%)',
+            data: habits.map(h=>habitCompletion[h]),
+            backgroundColor: habits.map(()=> 'rgba(79,209,197,0.7)'),
+            borderColor: habits.map(()=> 'rgba(79,209,197,1)'),
+            borderWidth:1
+        }]
+    };
+    if(chart) chart.destroy();
+    chart = new Chart(ctx,{ type:'bar', data, options:{ responsive:true, scales:{ y:{ beginAtZero:true, max:100 }}}});
+}
+
+// ========== EXPORT PDF ==========
+exportPDFBtn.addEventListener('click',()=>{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(20); doc.setTextColor('#4fd1c5'); doc.text('HabitPro Report',105,20,null,null,'center');
+    doc.setFontSize(12); doc.setTextColor(0,0,0); doc.text(`Generated on: ${new Date().toLocaleString()}`,105,30,null,null,'center');
+    let y=45;
+    habits.forEach(habit=>{
+        doc.setFillColor(30,41,55);
+        doc.rect(15,y-8,180,10,'F');
+        doc.setTextColor(255,255,255);
+        doc.text(`${habit}: ${habitCompletion[habit]}%`,20,y);
+        y+=15;
+    });
+    // Footer Branding
+    doc.setFontSize(10); doc.setTextColor(150);
+    doc.text('Powered by HabitPro –',105,y+10,null,null,'center');
+    doc.save('HabitPro_Report.pdf');
+});
+</script>
